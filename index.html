@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>حذف بک‌گراند با هوش مصنوعی</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f3f4f6;color:#111827;font-family:system-ui,-apple-system,sans-serif}
+main{max-width:680px;margin:auto;padding:18px}
+.card{background:#fff;border-radius:22px;padding:20px;box-shadow:0 8px 28px #0001}
+h1{text-align:center;margin:0 0 8px;font-size:25px}
+.sub{text-align:center;color:#667085;margin-bottom:18px}
+.fileBox{position:relative;margin-top:12px}
+.fileButton{background:#111827;color:#fff;padding:15px;border-radius:13px;text-align:center;font-weight:700}
+#file{position:absolute;inset:0;width:100%;height:100%;opacity:0}
+.preview{margin-top:16px;min-height:230px;border:2px dashed #d0d5dd;border-radius:17px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:repeating-conic-gradient(#eee 0 25%,#fff 0 50%) 50%/24px 24px}
+.preview img{max-width:100%;max-height:55vh}
+button,.download{width:100%;border:0;border-radius:13px;padding:14px;font-size:16px;font-weight:700;margin-top:10px;text-align:center}
+#run{background:#2563eb;color:#fff}
+#run:disabled{opacity:.5}
+.download{background:#16a34a;color:#fff;text-decoration:none;display:block}
+.reset{background:#e5e7eb;color:#111827}
+.hidden{display:none!important}
+#status{text-align:center;line-height:1.8;color:#667085;margin-top:13px;word-break:break-word}
+.note{font-size:12px;color:#667085;line-height:1.8;margin-top:15px}
+</style>
+</head>
+<body>
+<main>
+<div class="card">
+<h1>🪄 حذف بک‌گراند با هوش مصنوعی</h1>
+<div class="sub">توکن در این صفحه نمایش داده نمی‌شود.</div>
+
+<div class="fileBox">
+  <div class="fileButton">📷 انتخاب عکس</div>
+  <input id="file" type="file" accept="image/*">
+</div>
+
+<div class="preview">
+  <span id="placeholder">پیش‌نمایش عکس اینجا می‌آید</span>
+  <img id="preview" class="hidden" alt="پیش‌نمایش">
+</div>
+
+<button id="run" disabled>✨ حذف بک‌گراند</button>
+<a id="download" class="download hidden" download="no-background.png">⬇️ ذخیره عکس</a>
+<button id="reset" class="reset hidden">🔄 عکس جدید</button>
+<div id="status"></div>
+
+<div class="note">
+کلید سرویس باید فقط روی سرور و داخل فایل .env باشد؛ داخل این صفحه قرار نمی‌گیرد.
+</div>
+</div>
+</main>
+
+<script>
+const fileEl=document.getElementById("file");
+const preview=document.getElementById("preview");
+const placeholder=document.getElementById("placeholder");
+const run=document.getElementById("run");
+const download=document.getElementById("download");
+const reset=document.getElementById("reset");
+const statusEl=document.getElementById("status");
+let selectedFile=null;
+
+fileEl.addEventListener("change",()=>{
+  selectedFile=fileEl.files?.[0]||null;
+  if(!selectedFile)return;
+  preview.src=URL.createObjectURL(selectedFile);
+  preview.classList.remove("hidden");
+  placeholder.classList.add("hidden");
+  download.classList.add("hidden");
+  reset.classList.remove("hidden");
+  statusEl.textContent="✅ عکس انتخاب شد.";
+  run.disabled=false;
+});
+
+run.addEventListener("click",async()=>{
+  if(!selectedFile)return;
+  run.disabled=true;
+  statusEl.textContent="⏳ عکس در حال پردازش است...";
+
+  try{
+    const form=new FormData();
+    form.append("image",selectedFile);
+
+    const response=await fetch("/api/remove-background",{
+      method:"POST",
+      body:form
+    });
+
+    const data=await response.json().catch(()=>({}));
+
+    if(!response.ok) throw new Error(data.error||"خطا در پردازش تصویر");
+
+    if(!data.imageUrl) throw new Error("تصویر خروجی دریافت نشد.");
+
+    preview.src=data.imageUrl;
+    download.href=data.imageUrl;
+    download.classList.remove("hidden");
+    statusEl.textContent="✅ بک‌گراند با موفقیت حذف شد!";
+  }catch(error){
+    console.error(error);
+    statusEl.textContent="❌ "+(error.message||"خطای نامشخص");
+  }finally{
+    run.disabled=false;
+  }
+});
+
+reset.addEventListener("click",()=>{
+  selectedFile=null;
+  fileEl.value="";
+  preview.src="";
+  preview.classList.add("hidden");
+  placeholder.classList.remove("hidden");
+  download.classList.add("hidden");
+  reset.classList.add("hidden");
+  run.disabled=true;
+  statusEl.textContent="";
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: ai-background-remover
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: FAL_KEY
+        sync: false
+      - key: PORT
+        value: 10000
