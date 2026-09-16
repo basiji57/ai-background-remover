@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>حذف بک‌گراند با هوش مصنوعی</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f4f6;color:#111827;font-family:system-ui,-apple-system,sans-serif}
+main{max-width:680px;margin:auto;padding:16px}.card{background:#fff;border-radius:22px;padding:20px;box-shadow:0 8px 28px #0001}
+h1{text-align:center;margin:0 0 5px;font-size:25px}.sub{text-align:center;color:#667085;margin-bottom:18px}
+label{display:block;font-weight:700;margin:12px 0 7px}input[type=password]{width:100%;padding:13px;border:1px solid #d0d5dd;border-radius:12px;font-size:15px;direction:ltr}
+.filebox{position:relative;margin-top:14px}.filebtn{padding:15px;background:#111827;color:#fff;text-align:center;border-radius:13px;font-weight:700}
+#file{position:absolute;inset:0;width:100%;height:100%;opacity:0}
+.preview{margin-top:15px;min-height:220px;border:2px dashed #d0d5dd;border-radius:17px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:repeating-conic-gradient(#eee 0 25%,#fff 0 50%) 50%/24px 24px}
+.preview img{max-width:100%;max-height:55vh}.hidden{display:none!important}
+button,.download{width:100%;border:0;border-radius:13px;padding:14px;font-size:16px;font-weight:700;margin-top:10px;text-align:center}
+#run{background:#2563eb;color:white}#run:disabled{opacity:.5}.download{display:block;background:#16a34a;color:#fff;text-decoration:none}.reset{background:#e5e7eb;color:#111827}
+#status{text-align:center;line-height:1.8;margin:13px 0;color:#667085;word-break:break-word}.note{font-size:12px;color:#667085;line-height:1.8}
+</style>
+</head>
+<body>
+<main><div class="card">
+<h1>🪄 حذف بک‌گراند با AI</h1><div class="sub">نسخه نهایی موبایل</div>
+<label for="token">توکن Hugging Face</label>
+<input id="token" type="password" placeholder="hf_..." autocomplete="off">
+
+<div class="filebox"><div class="filebtn">📷 انتخاب عکس</div><input id="file" type="file" accept="image/*"></div>
+
+<div class="preview"><span id="placeholder">پیش‌نمایش عکس اینجا می‌آید</span><img id="preview" class="hidden"></div>
+<button id="run" disabled>✨ حذف بک‌گراند</button>
+<a id="download" class="download hidden" download="no-background.png">⬇️ ذخیره عکس</a>
+<button id="reset" class="reset hidden">🔄 عکس جدید</button>
+<div id="status"></div>
+<div class="note">توکن را برای خودت نگه دار و در چت ارسال نکن. این نسخه برای تست شخصی است.</div>
+</div></main>
+
+<script>
+const $=id=>document.getElementById(id);
+const token=$('token'),file=$('file'),preview=$('preview'),placeholder=$('placeholder'),run=$('run'),statusEl=$('status'),download=$('download'),reset=$('reset');
+let selected=null;
+
+function update(){run.disabled=!(selected&&token.value.trim())}
+token.addEventListener('input',update);
+
+file.addEventListener('change',()=>{
+  selected=file.files?.[0]||null;
+  if(!selected)return;
+  if(!selected.type.startsWith('image/')){statusEl.textContent='❌ لطفاً عکس انتخاب کن.';selected=null;file.value='';update();return}
+  preview.src=URL.createObjectURL(selected);preview.classList.remove('hidden');placeholder.classList.add('hidden');
+  download.classList.add('hidden');reset.classList.remove('hidden');statusEl.textContent='✅ عکس انتخاب شد.';update();
+});
+
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
+async function readJson(res){
+  const text=await res.text();
+  let data; try{data=JSON.parse(text)}catch{throw new Error('پاسخ سرور قابل خواندن نیست: '+text.slice(0,180))}
+  if(!res.ok) throw new Error(data?.error||data?.message||('HTTP '+res.status));
+  return data;
+}
+
+async function removeBackground(){
+  const hf=token.value.trim();
+  if(!selected||!hf)return;
+
+  run.disabled=true; download.classList.add('hidden');
+  statusEl.textContent='⏳ عکس در حال ارسال به هوش مصنوعی...';
+
+  try{
+    // Convert the selected photo to a data URL. Fal accepts data-URI image input.
+    const dataUrl=await new Promise((resolve,reject)=>{
+      const r=new FileReader();
+      r.onload=()=>resolve(r.result); r.onerror=()=>reject(new Error('خواندن عکس ناموفق بود.'));
+      r.readAsDataURL(selected);
+    });
+
+    // Hugging Face routes this model to Fal. We explicitly use the queue route
+    // and then poll it ourselves, so an IN_QUEUE response is NOT treated as an error.
+    const submitUrl='https://router.huggingface.co/fal-ai/fal-ai/bria/background/remove?_subdomain=queue';
+    const headers={'Authorization':'Bearer '+hf,'Content-Type':'application/json'};
+    const submit=await fetch(submitUrl,{method:'POST',headers,body:JSON.stringify({
+      image_url:dataUrl,
+      sync_mode:true
+    })});
+    const q=await readJson(submit);
+
+    let result=q;
+    if(q.status && q.status!=='COMPLETED'){
+      const responseUrl=q.response_url;
+      if(!responseUrl)throw new Error('شناسه صف از سرور دریافت نشد.');
+
+      // The returned URL is on queue.fal.run. For an HF token, use the
+      // Hugging Face Fal router instead of calling Fal directly.
+      const path=new URL(responseUrl).pathname;
+      const base='https://router.huggingface.co/fal-ai';
+      const statusUrl=base+path+'/status?_subdomain=queue';
+      const resultUrl=base+path+'?_subdomain=queue';
+
+      for(let i=0;i<120;i++){
+        await sleep(1000);
+        const sr=await fetch(statusUrl,{headers:{'Authorization':'Bearer '+hf}});
+        const s=await readJson(sr);
+        statusEl.textContent=s.status==='IN_PROGRESS'
+          ? '⏳ در حال پردازش عکس...'
+          : '⏳ در صف هوش مصنوعی...';
+
+        if(s.status==='COMPLETED'){result=await readJson(await fetch(resultUrl,{headers:{'Authorization':'Bearer '+hf}}));break}
+        if(s.status==='FAILED' || s.status==='CANCELLED') throw new Error('پردازش تصویر در سرویس هوش مصنوعی ناموفق شد.');
+      }
+      if(!result?.image)throw new Error('زمان پردازش تمام شد؛ دوباره امتحان کن.');
+    }
+
+    // Fal background-removal output is an image object with a URL.
+    const outUrl=result?.image?.url;
+    if(!outUrl)throw new Error('تصویر نهایی از سرویس دریافت نشد.');
+
+    preview.src=outUrl;preview.classList.remove('hidden');
+    download.href=outUrl;download.classList.remove('hidden');
+    statusEl.textContent='✅ بک‌گراند حذف شد!';
+  }catch(e){
+    console.error(e);
+    statusEl.textContent='❌ خطا: '+(e.message||String(e));
+  }finally{update()}
+}
+run.addEventListener('click',removeBackground);
+
+reset.addEventListener('click',()=>{
+  selected=null;file.value='';preview.src='';preview.classList.add('hidden');placeholder.classList.remove('hidden');
+  download.classList.add('hidden');reset.classList.add('hidden');statusEl.textContent='';update();
+});
+</script>
+</body>
+</html>
